@@ -7,6 +7,41 @@ const slug = route.params.slug as string
 const article = articles[slug]
 
 const { share } = useShare()
+
+const commentName = ref('')
+const commentText = ref('')
+const { comments, addComment } = useComments(slug)
+
+// reply state: id of comment currently being replied to (null = none)
+const replyToId = ref<number | null>(null)
+const replyName = ref('')
+const replyText = ref('')
+
+const submitComment = () => {
+  const ok = addComment(commentName.value, commentText.value)
+  if (ok) {
+    commentName.value = ''
+    commentText.value = ''
+  }
+}
+
+const startReply = (id: number) => {
+  replyToId.value = id
+  replyName.value = ''
+  replyText.value = ''
+}
+
+const cancelReply = () => {
+  replyToId.value = null
+  replyName.value = ''
+  replyText.value = ''
+}
+
+const submitReply = () => {
+  if (!replyToId.value) return
+  const ok = addComment(replyName.value, replyText.value, replyToId.value)
+  if (ok) cancelReply()
+}
 </script>
 
 <template>
@@ -64,7 +99,6 @@ const { share } = useShare()
       {{ article.title }}
     </h1>
 
-    <!-- Share (right after title) -->
     <div class="flex items-center gap-3 mb-3">
       <button
         class="flex items-center gap-2 text-xs font-bold text-[#cc0000] uppercase tracking-wider hover:underline"
@@ -136,7 +170,136 @@ const { share } = useShare()
       </template>
     </div>
 
-    <div class="mt-10 p-5 md:p-6 rounded-lg bg-[#f8f8f8] border-l-4 border-[#cc0000] text-center">
+    <!-- AUTHOR SIGNATURE BANNER -->
+    <div class="mt-10 p-5 md:p-6 rounded-lg bg-[#cc0000] text-white">
+      <p class="text-sm md:text-base mb-3 italic">
+        Yours in Education, Mentorship and Service,
+      </p>
+      <p class="text-lg md:text-xl font-bold mb-1">
+        Mwalimu Malata O.J. Benson
+      </p>
+      <p class="text-xs md:text-sm text-white/90 mb-3">
+        Teacher – Mentor – Publisher – Writer – Political Analyst – Educational Consultant – Motivational Speaker
+      </p>
+      <p class="text-xs md:text-sm font-semibold">
+        0728701795 · bensonmalata65@gmail.com
+      </p>
+    </div>
+
+    <!-- COMMENTS -->
+    <div class="mt-10 p-5 md:p-6 rounded-lg border border-[#e8e8e8] bg-white">
+      <h3 class="text-lg md:text-xl font-bold text-[#1a1a1a] mb-4 border-l-4 border-[#cc0000] pl-3">
+        Comments ({{ comments.length }})
+      </h3>
+
+      <!-- Comment list with scroll -->
+      <div v-if="comments.length" class="space-y-4 mb-6 max-h-80 overflow-y-auto pr-2">
+        <div
+          v-for="c in comments"
+          :key="c.id"
+          class="bg-[#f8f8f8] border-l-4 border-[#cc0000] px-4 py-3 rounded"
+        >
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-bold text-[#1a1a1a]">{{ c.name }}</span>
+            <span class="text-[0.7rem] text-gray-500">{{ c.date }}</span>
+          </div>
+          <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{{ c.text }}</p>
+
+          <!-- Reply button -->
+          <button
+            class="text-[0.7rem] font-bold text-[#cc0000] uppercase tracking-wider mt-2 hover:underline"
+            @click="startReply(c.id)"
+          >
+            Reply
+          </button>
+
+          <!-- Nested replies -->
+          <div v-if="c.replies.length" class="mt-3 ml-4 space-y-3 border-l-2 border-[#e8e8e8] pl-3">
+            <div v-for="r in c.replies" :key="r.id" class="bg-white px-3 py-2 rounded">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-sm font-bold text-[#1a1a1a]">{{ r.name }}</span>
+                <span class="text-[0.7rem] text-gray-500">{{ r.date }}</span>
+              </div>
+              <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{{ r.text }}</p>
+            </div>
+          </div>
+
+          <!-- Reply form (only shows for the comment being replied to) -->
+          <form
+            v-if="replyToId === c.id"
+            class="mt-3 ml-4 space-y-2 border-l-2 border-[#cc0000] pl-3"
+            @submit.prevent="submitReply"
+          >
+            <input
+              v-model="replyName"
+              type="text"
+              class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm rounded"
+              placeholder="Your name"
+              required
+            />
+            <textarea
+              v-model="replyText"
+              rows="2"
+              class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm rounded"
+              placeholder="Write your reply..."
+              required
+            ></textarea>
+            <div class="flex gap-2">
+              <button
+                type="submit"
+                class="bg-[#cc0000] text-white px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000]"
+              >
+                Post Reply
+              </button>
+              <button
+                type="button"
+                class="bg-[#e8e8e8] text-[#1a1a1a] px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#d0d0d0]"
+                @click="cancelReply"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <p v-else class="text-sm text-gray-500 mb-6">
+        No comments yet. Be the first to share your thoughts.
+      </p>
+
+      <!-- Top-level comment form -->
+      <form class="space-y-3" @submit.prevent="submitComment">
+        <div>
+          <label for="comment-name" class="block text-sm font-semibold text-[#1a1a1a] mb-1">Your Name</label>
+          <input
+            id="comment-name"
+            v-model="commentName"
+            type="text"
+            class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded"
+            placeholder="Enter your name"
+            required
+          />
+        </div>
+        <div>
+          <label for="comment-text" class="block text-sm font-semibold text-[#1a1a1a] mb-1">Your Comment</label>
+          <textarea
+            id="comment-text"
+            v-model="commentText"
+            rows="4"
+            class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded"
+            placeholder="Share your thoughts on this article..."
+            required
+          ></textarea>
+        </div>
+        <button
+          type="submit"
+          class="bg-[#cc0000] text-white px-6 py-2 font-semibold text-sm uppercase tracking-wider hover:bg-[#990000] transition-colors rounded"
+        >
+          Post Comment
+        </button>
+      </form>
+    </div>
+
+    <div class="mt-6 p-5 md:p-6 rounded-lg bg-[#f8f8f8] border-l-4 border-[#cc0000] text-center">
       <p class="text-sm text-gray-600 mb-4">
         Found this useful? Share it with a teacher, parent or KCSE candidate.
       </p>

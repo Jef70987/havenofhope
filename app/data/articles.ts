@@ -134,10 +134,6 @@ export const articles: Record<string, Article> = {
       { type: 'p', text: 'You have approximately 53 days. Do not wait for another mock examination. Do not wait for October. Do not wait for the last week. Start now.' },
       { type: 'p', text: 'Take the learner by the hand. Give the learner 20 questions. Mark them. Correct them. Sit beside the learner. Explain the method. Repeat. Repeat. Repeat.' },
       { type: 'highlight', text: 'Let us save people’s children through mathematics.' },
-      { type: 'signature', text: 'Yours in Education, Mentorship and Service,' },
-      { type: 'signatureName', text: 'Mwalimu Malata O.J. Benson' },
-      { type: 'signatureRole', text: 'Teacher – Mentor – Publisher – Writer – Political Analyst – Educational Consultant – Motivational Speaker' },
-      { type: 'signatureContact', text: '0728701795 · bensonmalata65@gmail.com' },
     ],
   },
 }

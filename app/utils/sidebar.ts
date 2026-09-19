@@ -6,7 +6,6 @@ export interface SidebarItem {
 
 export const sidebarItems: SidebarItem[] = [
   { title: 'Home',              icon: 'fa6-solid:house',                 link: '/' },
-  { title: 'About Us',          icon: 'fa6-solid:circle-info',           link: '/about' },
   { title: 'TSC',               icon: 'fa6-solid:clipboard-check',       link: '/tsc' },
   { title: 'Schools',           icon: 'fa6-solid:school',                link: '/schools' },
   { title: 'Workshops',         icon: 'fa6-solid:screwdriver-wrench',    link: '/workshops' },
@@ -15,4 +14,5 @@ export const sidebarItems: SidebarItem[] = [
   { title: 'Leadership',        icon: 'fa6-solid:users',                 link: '/leadership' },
   { title: 'Politics',          icon: 'fa6-solid:landmark',              link: '/politics' },
   { title: 'Social',            icon: 'fa6-solid:comments',              link: '/social' },
+  { title: 'About Author',          icon: 'fa6-solid:circle-info',           link: '/about' }
 ]

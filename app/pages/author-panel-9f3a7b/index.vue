@@ -9,7 +9,6 @@ const showPassword = ref(false)
 const error = ref('')
 const loading = ref(false)
 
-// strict email pattern
 const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
 
 const submit = async () => {
@@ -21,20 +20,29 @@ const submit = async () => {
   }
 
   if (!emailRegex.test(username.value.trim())) {
-    error.value = 'Invalid username format.'
+    error.value = 'Invalid username or password.'
     return
   }
 
   loading.value = true
-  await new Promise((r) => setTimeout(r, 500))
+  try {
+    const res = await $fetch<{ ok: boolean; user: any }>('/api/auth/login', {
+      method: 'POST',
+      body: {
+        username: username.value.trim().toLowerCase(),
+        password: password.value,
+      },
+    })
 
-  // Placeholder — backend will validate tomorrow
-  if (password.value === 'admin') {
-    error.value = 'Login wired tomorrow. Credentials accepted.'
-  } else {
-    error.value = 'Invalid username or password.'
+    if (res.ok) {
+      // Redirect to dashboard
+      await navigateTo('/author-panel-9f3a7b/dashboard')
+    }
+  } catch (e: any) {
+    error.value = e?.data?.statusMessage || 'Invalid username or password.'
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 </script>
 
@@ -44,7 +52,7 @@ const submit = async () => {
       <!-- Brand -->
       <div class="text-center mb-6">
         <h1 class="text-lg font-bold text-[#1a1a1a]">
-          <span class="text-[#cc0000]">Global</span> Mentorship
+          <span class="text-[#cc0000]">Global</span> Mentorship Branding
         </h1>
         <p class="text-[0.65rem] text-gray-500 uppercase tracking-wider mt-0.5">
           Author
@@ -106,6 +114,13 @@ const submit = async () => {
         >
           {{ loading ? 'Checking…' : 'Login' }}
         </button>
+
+        <NuxtLink
+          to="/author-panel-9f3a7b/forgot"
+          class="block text-center text-xs text-gray-500 hover:text-[#cc0000] mt-2"
+        >
+          Forgot password?
+        </NuxtLink>
       </form>
 
       <p class="text-[0.65rem] text-center text-gray-400 mt-6">

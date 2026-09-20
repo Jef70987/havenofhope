@@ -10,6 +10,18 @@ const links = [
 ]
 
 const { isOpen, open, close } = useSidebar()
+
+const loggingOut = ref(false)
+const logout = async () => {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try {
+    await $fetch('/api/auth/logout', { method: 'POST' })
+  } catch {
+    // ignore — cookies are cleared server-side anyway
+  }
+  await navigateTo('/author-panel-9f3a7b')
+}
 </script>
 
 <template>
@@ -27,12 +39,13 @@ const { isOpen, open, close } = useSidebar()
           <p class="text-[0.6rem] text-gray-500 uppercase tracking-wider">Author Panel</p>
         </div>
       </div>
-      <NuxtLink
-        to="/author-panel-9f3a7b"
-        class="text-xs font-bold text-[#cc0000] uppercase tracking-wider hover:underline"
+      <button
+        class="text-xs font-bold text-[#cc0000] uppercase tracking-wider hover:underline disabled:opacity-60"
+        :disabled="loggingOut"
+        @click="logout"
       >
-        Logout
-      </NuxtLink>
+        {{ loggingOut ? 'Signing out…' : 'Logout' }}
+      </button>
     </header>
 
     <!-- ===== MOBILE DRAWER ===== -->
@@ -74,7 +87,6 @@ const { isOpen, open, close } = useSidebar()
     </aside>
 
     <!-- ===== DESKTOP LAYOUT ===== -->
-    <!-- Sidebar (fixed) -->
     <aside class="hidden md:flex md:flex-col w-56 bg-white border-r border-[#e8e8e8] shrink-0 h-screen overflow-y-auto">
       <div class="px-4 py-4 border-b border-[#e8e8e8]">
         <h1 class="text-sm font-bold">
@@ -103,12 +115,13 @@ const { isOpen, open, close } = useSidebar()
         <p class="text-xs text-gray-500">
           Signed in as <strong class="text-[#1a1a1a]">Author</strong>
         </p>
-        <NuxtLink
-          to="/author-panel-9f3a7b"
-          class="text-xs font-bold text-[#cc0000] uppercase tracking-wider hover:underline"
+        <button
+          class="text-xs font-bold text-[#cc0000] uppercase tracking-wider hover:underline disabled:opacity-60"
+          :disabled="loggingOut"
+          @click="logout"
         >
-          Logout
-        </NuxtLink>
+          {{ loggingOut ? 'Signing out…' : 'Logout' }}
+        </button>
       </header>
 
       <!-- Scrollable content -->

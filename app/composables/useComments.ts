@@ -1,50 +1,42 @@
-export interface Comment {
-  id: number
+export interface Reply {
+  id: string
   name: string
   text: string
-  date: string
-  replies: Comment[]
+  created_at: string
+  is_admin: boolean
 }
 
-const store = reactive<Record<string, Comment[]>>({})
+export interface Comment {
+  id: string
+  parent_id: string | null
+  name: string
+  text: string
+  is_admin: boolean
+  created_at: string
+  replies: Reply[]
+}
+
+const store = useState<Record<string, Comment[]>>('comments-store', () => ({}))
 
 export const useComments = (slug: string) => {
-  if (!store[slug]) store[slug] = []
+  // Ensure the slot exists and is always an array
+  if (!store.value[slug]) store.value[slug] = []
 
-  const comments = computed(() => store[slug])
+  const comments = computed<Comment[]>(() => store.value[slug] ?? [])
 
-  const addComment = (name: string, text: string, parentId?: number) => {
-    if (!name.trim() || !text.trim()) return false
-    const newComment: Comment = {
-      id: Date.now(),
-      name: name.trim(),
-      text: text.trim(),
-      date: new Date().toLocaleString('en-KE', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      replies: [],
+  const loading = ref(false)
+
+  const load = async () => {
+    loading.value = true
+    try {
+      const res = await $fetch<{ ok: boolean; comments: Comment[] }>(`/api/posts/${slug}/comments`)
+      store.value[slug] = res.comments ?? []
+    } catch {
+      store.value[slug] = []
+    } finally {
+      loading.value = false
     }
-    if (parentId) {
-      const parent = findComment(store[slug], parentId)
-      if (parent) parent.replies.push(newComment)
-    } else {
-      store[slug].push(newComment)
-    }
-    return true
   }
 
-  const findComment = (list: Comment[], id: number): Comment | null => {
-    for (const c of list) {
-      if (c.id === id) return c
-      const found = findComment(c.replies, id)
-      if (found) return found
-    }
-    return null
-  }
-
-  return { comments, addComment }
+  return { comments, loading, load }
 }

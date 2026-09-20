@@ -5,70 +5,119 @@ definePageMeta({ layout: 'admin' })
 
 const { show: showToast } = useToast()
 
-// ===== PROFILE =====
+const loading = ref(true)
+const saving = ref(false)
+const changingPw = ref(false)
+const deleting = ref(false)
+
 const profile = reactive({
-  displayName: 'Mwalimu Malata Benson',
-  username: 'bensonmalata65@gmail.com', // label as Username but it's the login email
-  phone: '0728701795',
-  tagline: 'Teacher – Mentor – Writer – Publisher – Educational Consultant – Political Analyst',
-  publicEmail: 'bensonmalata65@gmail.com',
+  displayName: '',
+  username: '',
+  phone: '',
+  tagline: '',
+  publicEmail: '',
 })
 
-const saveProfile = () => {
-  if (!profile.displayName.trim()) return showToast('Display name cannot be empty.')
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.username)) return showToast('Invalid username format.')
-  showToast('Profile saved — wired tomorrow.')
-}
-
-// ===== CHANGE PASSWORD =====
-const pw = reactive({
-  current: '',
-  next: '',
-  confirm: '',
-})
+const pw = reactive({ current: '', next: '', confirm: '' })
 const showPw = reactive({ current: false, next: false, confirm: false })
 
-const savePassword = () => {
+onMounted(async () => {
+  try {
+    const res = await $fetch<{ ok: boolean; user: any }>('/api/auth/me', {
+      headers: useRequestHeaders(['cookie']),
+    })
+    const u = res.user
+    profile.displayName = u?.name || ''
+    profile.username = u?.email || ''
+    profile.phone = u?.phone || ''
+    profile.tagline = u?.tagline || ''
+    profile.publicEmail = u?.publicEmail || u?.email || ''
+  } catch {
+    showToast('Could not load profile.')
+  } finally {
+    loading.value = false
+  }
+})
+
+const saveProfile = async () => {
+  if (saving.value) return
+  if (!profile.displayName.trim()) return showToast('Display name cannot be empty.')
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.username)) return showToast('Invalid username format.')
+
+  saving.value = true
+  try {
+    await $fetch('/api/admin/profile', { method: 'PATCH', body: { ...profile } })
+    showToast('Profile saved.')
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not save profile.')
+  } finally {
+    saving.value = false
+  }
+}
+
+const savePassword = async () => {
+  if (changingPw.value) return
   if (!pw.current || !pw.next || !pw.confirm) return showToast('Please fill in all password fields.')
   if (pw.next.length < 8) return showToast('New password must be at least 8 characters.')
   if (pw.next !== pw.confirm) return showToast('New password and confirmation do not match.')
   if (pw.next === pw.current) return showToast('New password must be different from the current one.')
-  pw.current = ''
-  pw.next = ''
-  pw.confirm = ''
-  showToast('Password updated — wired tomorrow.')
+
+  changingPw.value = true
+  try {
+    await $fetch('/api/admin/account/password', {
+      method: 'POST',
+      body: { current: pw.current, next: pw.next, confirm: pw.confirm },
+    })
+    pw.current = ''
+    pw.next = ''
+    pw.confirm = ''
+    showToast('Password updated.')
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not change password.')
+  } finally {
+    changingPw.value = false
+  }
 }
 
-// ===== DANGER ZONE =====
 const confirmDelete = ref('')
-const deleteAccount = () => {
+const deleteAccount = async () => {
+  if (deleting.value) return
   if (confirmDelete.value !== 'DELETE') return showToast('Type DELETE to confirm.')
-  showToast('Account deletion wired tomorrow.')
+  deleting.value = true
+  try {
+    showToast('Account deletion is disabled.')
+  } finally {
+    deleting.value = false
+  }
 }
 </script>
 
 <template>
   <div class="space-y-4 md:space-y-6 w-full max-w-full">
-    <!-- HEADER -->
     <div>
       <h1 class="text-lg md:text-xl font-bold text-[#1a1a1a]">Account</h1>
       <p class="text-xs md:text-sm text-gray-500">Manage your profile, login and security</p>
     </div>
 
-    <!-- ===== PROFILE ===== -->
+    <!-- PROFILE -->
     <section class="bg-white rounded-lg shadow-sm border border-[#e8e8e8] p-4 md:p-5 w-full">
       <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] mb-4 border-l-4 border-[#cc0000] pl-2">
         Profile
       </h2>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div v-if="loading" class="text-center py-6">
+        <p class="text-xs text-gray-500">Loading…</p>
+      </div>
+
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="min-w-0">
           <label class="block text-xs font-semibold mb-1">Display Name</label>
           <input
             v-model="profile.displayName"
             type="text"
+            maxlength="120"
             class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="Your public name"
+            :disabled="saving"
           />
         </div>
 
@@ -80,7 +129,7 @@ const deleteAccount = () => {
             autocapitalize="none"
             spellcheck="false"
             class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="you@example.com"
+            :disabled="saving"
           />
           <p class="text-[0.65rem] text-gray-500 mt-1">Used to log into the author panel.</p>
         </div>
@@ -90,8 +139,9 @@ const deleteAccount = () => {
           <input
             v-model="profile.phone"
             type="tel"
+            maxlength="30"
             class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="07xx xxx xxx"
+            :disabled="saving"
           />
         </div>
 
@@ -103,9 +153,8 @@ const deleteAccount = () => {
             autocapitalize="none"
             spellcheck="false"
             class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="contact@example.com"
+            :disabled="saving"
           />
-          <p class="text-[0.65rem] text-gray-500 mt-1">Shown on articles and the About page.</p>
         </div>
 
         <div class="md:col-span-2 min-w-0">
@@ -113,23 +162,23 @@ const deleteAccount = () => {
           <input
             v-model="profile.tagline"
             type="text"
+            maxlength="200"
             class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="Short description shown in signatures"
+            :disabled="saving"
           />
         </div>
       </div>
 
       <div class="mt-5 flex justify-end">
         <button
-          class="bg-[#cc0000] text-white px-6 py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000]"
+          class="bg-[#cc0000] text-white px-6 py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000] disabled:opacity-60"
+          :disabled="saving || loading"
           @click="saveProfile"
-        >
-          Save Profile
-        </button>
+        >{{ saving ? 'Saving…' : 'Save Profile' }}</button>
       </div>
     </section>
 
-    <!-- ===== CHANGE PASSWORD ===== -->
+    <!-- PASSWORD -->
     <section class="bg-white rounded-lg shadow-sm border border-[#e8e8e8] p-4 md:p-5 w-full">
       <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] mb-4 border-l-4 border-[#cc0000] pl-2">
         Change Password
@@ -144,7 +193,7 @@ const deleteAccount = () => {
               :type="showPw.current ? 'text' : 'password'"
               autocomplete="current-password"
               class="w-full px-3 py-2 pr-10 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-              placeholder="Enter current password"
+              :disabled="changingPw"
             />
             <button
               type="button"
@@ -164,7 +213,7 @@ const deleteAccount = () => {
               :type="showPw.next ? 'text' : 'password'"
               autocomplete="new-password"
               class="w-full px-3 py-2 pr-10 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-              placeholder="At least 8 characters"
+              :disabled="changingPw"
             />
             <button
               type="button"
@@ -184,7 +233,7 @@ const deleteAccount = () => {
               :type="showPw.confirm ? 'text' : 'password'"
               autocomplete="new-password"
               class="w-full px-3 py-2 pr-10 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-              placeholder="Repeat new password"
+              :disabled="changingPw"
             />
             <button
               type="button"
@@ -199,15 +248,14 @@ const deleteAccount = () => {
 
       <div class="mt-5 flex justify-end max-w-xl">
         <button
-          class="bg-[#cc0000] text-white px-6 py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000]"
+          class="bg-[#cc0000] text-white px-6 py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000] disabled:opacity-60"
+          :disabled="changingPw"
           @click="savePassword"
-        >
-          Update Password
-        </button>
+        >{{ changingPw ? 'Updating…' : 'Update Password' }}</button>
       </div>
     </section>
 
-    <!-- ===== DANGER ZONE ===== -->
+    <!-- DANGER -->
     <section class="bg-white rounded-lg shadow-sm border border-[#cc0000] p-4 md:p-5 w-full">
       <h2 class="text-sm font-bold uppercase tracking-wider text-[#cc0000] mb-2 border-l-4 border-[#cc0000] pl-2">
         Danger Zone
@@ -231,11 +279,9 @@ const deleteAccount = () => {
 
         <button
           class="bg-[#cc0000] text-white px-6 py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000] disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="confirmDelete !== 'DELETE'"
+          :disabled="confirmDelete !== 'DELETE' || deleting"
           @click="deleteAccount"
-        >
-          Delete Account
-        </button>
+        >Delete Account</button>
       </div>
     </section>
   </div>

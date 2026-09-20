@@ -1,28 +1,44 @@
 <script setup lang="ts">
+import { Icon } from '@iconify/vue'
+
 definePageMeta({ layout: 'admin' })
 
 interface Post {
-  id: number
+  id: string
   title: string
   slug: string
+  subtitle: string | null
   category: string
-  categoryPath: string
-  date: string
-  dateISO: string
+  category_path: string
+  date: string | null
   status: 'published' | 'draft' | 'hidden'
-  image: string
-  excerpt: string
+  image: string | null
+  body: any[]
+  views: number
+  created_at: string
+  updated_at: string
 }
 
-const posts = ref<Post[]>([
-  { id: 1, title: 'Mathematics Can Change the Destiny of a KCSE Candidate: 53 Days to Turn Fear into Marks', slug: 'mathematics-can-change-destiny-kcse-candidate', category: 'Educational News', categoryPath: '/educational-news', date: '11th September 2026', dateISO: '2026-09-11', status: 'published', image: '/images/img1.jpeg', excerpt: 'As we approach the 2026 KCSE examinations…' },
-  { id: 2, title: 'Musingu Boys Posts Best KCSE Results in School History', slug: 'musingu-boys-best-kcse-results', category: 'Schools', categoryPath: '/schools', date: '9th September 2026', dateISO: '2026-09-09', status: 'published', image: '/images/img2.jpeg', excerpt: 'Musingu Boys High School has recorded a mean score of 8.95…' },
-  { id: 3, title: 'TSC Re-Advertises 1,631 Promotion Jobs for Teachers', slug: 'tsc-re-advertises-1631-promotion-jobs', category: 'TSC', categoryPath: '/tsc', date: '9th September 2026', dateISO: '2026-09-09', status: 'published', image: '', excerpt: 'The Teachers Service Commission has re-advertised 1,631 promotional vacancies…' },
-  { id: 4, title: 'KUPPET Threatens Countywide Strike Over TSC Principal Intimidation', slug: 'kuppet-threatens-countywide-strike', category: 'Politics', categoryPath: '/politics', date: '9th September 2026', dateISO: '2026-09-09', status: 'draft', image: '', excerpt: 'KUPPET Nyamira County branch has accused…' },
-  { id: 5, title: 'Kiswahili Teachers Attend National Workshop in Nakuru', slug: 'kiswahili-teachers-workshop-nakuru', category: 'Workshops', categoryPath: '/workshops', date: '9th September 2026', dateISO: '2026-09-09', status: 'hidden', image: '', excerpt: 'Over 400 Kiswahili teachers from across the country…' },
-  { id: 6, title: 'KNEC Releases 2026 KCSE Examination Timetable', slug: 'knec-releases-2026-kcse-timetable', category: 'KNEC', categoryPath: '/knec', date: '8th September 2026', dateISO: '2026-09-08', status: 'published', image: '', excerpt: 'The Kenya National Examinations Council has released…' },
-])
+const { show: showToast } = useToast()
 
+const loading = ref(false)
+const posts = ref<Post[]>([])
+
+const load = async () => {
+  loading.value = true
+  try {
+    const res = await $fetch<{ ok: boolean; posts: Post[] }>('/api/admin/posts')
+    posts.value = res.posts || []
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not load posts.')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(load)
+
+// Filters
 const searchQuery = ref('')
 const filterCategory = ref('')
 const filterDateFrom = ref('')
@@ -46,8 +62,8 @@ const filtered = computed(() => {
     if (q && !p.title.toLowerCase().includes(q) && !p.slug.toLowerCase().includes(q)) return false
     if (filterCategory.value && p.category !== filterCategory.value) return false
     if (filterStatus.value && p.status !== filterStatus.value) return false
-    if (filterDateFrom.value && p.dateISO < filterDateFrom.value) return false
-    if (filterDateTo.value && p.dateISO > filterDateTo.value) return false
+    if (filterDateFrom.value && (p.created_at || '').slice(0, 10) < filterDateFrom.value) return false
+    if (filterDateTo.value && (p.created_at || '').slice(0, 10) > filterDateTo.value) return false
     return true
   })
 })
@@ -60,30 +76,62 @@ const resetFilters = () => {
   filterStatus.value = ''
 }
 
-const { show: showToast } = useToast()
+const excerptOf = (p: Post) => {
+  const firstP = (p.body || []).find((b) => b.type === 'p')
+  return firstP?.text?.slice(0, 120) || ''
+}
 
+const formattedDate = (p: Post) => {
+  if (p.date) return p.date
+  if (!p.created_at) return ''
+  return new Date(p.created_at).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+// Actions
 const editPost = (p: Post) => {
   navigateTo(`/author-panel-9f3a7b/create?slug=${p.slug}`)
 }
 
-const togglePublish = (p: Post) => {
-  p.status = p.status === 'published' ? 'draft' : 'published'
-  showToast(p.status === 'published' ? 'Post published' : 'Post moved to drafts')
+const updatingId = ref<string | null>(null)
+
+const setStatus = async (p: Post, status: Post['status']) => {
+  updatingId.value = p.id
+  try {
+    await $fetch(`/api/admin/posts/${p.id}`, {
+      method: 'PATCH',
+      body: { status },
+    })
+    p.status = status
+    showToast(
+      status === 'published' ? 'Post published'
+      : status === 'draft' ? 'Post moved to drafts'
+      : 'Post hidden from public'
+    )
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not update post.')
+  } finally {
+    updatingId.value = null
+  }
 }
 
-const toggleHidden = (p: Post) => {
-  p.status = p.status === 'hidden' ? 'published' : 'hidden'
-  showToast(p.status === 'hidden' ? 'Post hidden from public' : 'Post visible to public')
-}
+const togglePublish = (p: Post) => setStatus(p, p.status === 'published' ? 'draft' : 'published')
+const toggleHidden = (p: Post) => setStatus(p, p.status === 'hidden' ? 'published' : 'hidden')
 
+// Delete
 const deleteTarget = ref<Post | null>(null)
 const askDelete = (p: Post) => { deleteTarget.value = p }
 const cancelDelete = () => { deleteTarget.value = null }
-const confirmDelete = () => {
+const confirmDelete = async () => {
   if (!deleteTarget.value) return
-  posts.value = posts.value.filter((x) => x.id !== deleteTarget.value!.id)
-  showToast('Post deleted')
+  const target = deleteTarget.value
   deleteTarget.value = null
+  try {
+    await $fetch(`/api/admin/posts/${target.id}`, { method: 'DELETE' })
+    posts.value = posts.value.filter((x) => x.id !== target.id)
+    showToast('Post deleted')
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not delete post.')
+  }
 }
 
 const statusBadge = (s: Post['status']) => {
@@ -95,13 +143,12 @@ const statusBadge = (s: Post['status']) => {
 
 <template>
   <div class="space-y-4 md:space-y-6 w-full max-w-full overflow-hidden">
-    <!-- ===== FILTERS ===== -->
+    <!-- FILTERS -->
     <section class="bg-white rounded-lg shadow border border-[#e8e8e8] p-4 w-full">
       <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] mb-3 border-l-4 border-[#cc0000] pl-2">
         Filters
       </h2>
 
-      <!-- Mobile: 1 col · Tablet: 2 cols · Desktop: 6 cols -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 w-full">
         <div class="sm:col-span-2 lg:col-span-2 min-w-0">
           <label class="block text-xs font-semibold mb-1">Search</label>
@@ -166,7 +213,7 @@ const statusBadge = (s: Post['status']) => {
       </div>
     </section>
 
-    <!-- ===== POSTS LIST ===== -->
+    <!-- POSTS LIST -->
     <section class="bg-white rounded-lg shadow border border-[#e8e8e8] p-4 w-full">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] border-l-4 border-[#cc0000] pl-2">
@@ -183,13 +230,16 @@ const statusBadge = (s: Post['status']) => {
         </div>
       </div>
 
-      <div v-if="filtered.length" class="space-y-3">
+      <div v-if="loading" class="text-center py-8">
+        <p class="text-xs text-gray-500">Loading posts…</p>
+      </div>
+
+      <div v-else-if="filtered.length" class="space-y-3">
         <div
           v-for="p in filtered"
           :key="p.id"
           class="border border-[#e8e8e8] rounded-lg p-3 flex flex-col gap-3 hover:border-gray-300 transition-colors w-full"
         >
-          <!-- Top: thumb + info -->
           <div class="flex gap-3 min-w-0">
             <div class="w-20 h-16 bg-[#f0f0f0] rounded overflow-hidden shrink-0">
               <img v-if="p.image" :src="p.image" :alt="p.title" class="w-full h-full object-cover" />
@@ -206,26 +256,28 @@ const statusBadge = (s: Post['status']) => {
                 <span class="text-[0.55rem] font-bold px-2 py-0.5 uppercase tracking-wider rounded" :class="statusBadge(p.status)">
                   {{ p.status }}
                 </span>
-                <span class="text-[0.6rem] text-gray-500">· {{ p.date }}</span>
+                <span class="text-[0.6rem] text-gray-500">· {{ formattedDate(p) }}</span>
+                <span class="text-[0.6rem] text-gray-400">· {{ p.views }} views</span>
               </div>
               <h3 class="text-sm font-bold text-[#1a1a1a] leading-snug mb-1 break-words">{{ p.title }}</h3>
-              <p class="text-xs text-gray-500 line-clamp-2 break-words">{{ p.excerpt }}</p>
+              <p class="text-xs text-gray-500 line-clamp-2 break-words">{{ excerptOf(p) }}</p>
               <p class="text-[0.6rem] text-gray-400 mt-1 font-mono break-all">/article/{{ p.slug }}</p>
             </div>
           </div>
 
-          <!-- Bottom: actions row (fits on any width) -->
           <div class="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
             <button
               class="text-[0.65rem] font-bold text-[#cc0000] hover:underline uppercase tracking-wider px-2 py-1"
               @click="editPost(p)"
             >Edit</button>
             <button
-              class="text-[0.65rem] font-bold text-gray-700 hover:underline uppercase tracking-wider px-2 py-1"
+              class="text-[0.65rem] font-bold text-gray-700 hover:underline uppercase tracking-wider px-2 py-1 disabled:opacity-50"
+              :disabled="updatingId === p.id"
               @click="togglePublish(p)"
             >{{ p.status === 'published' ? 'Unpublish' : 'Publish' }}</button>
             <button
-              class="text-[0.65rem] font-bold text-gray-700 hover:underline uppercase tracking-wider px-2 py-1"
+              class="text-[0.65rem] font-bold text-gray-700 hover:underline uppercase tracking-wider px-2 py-1 disabled:opacity-50"
+              :disabled="updatingId === p.id"
               @click="toggleHidden(p)"
             >{{ p.status === 'hidden' ? 'Show' : 'Hide' }}</button>
             <button
@@ -237,11 +289,11 @@ const statusBadge = (s: Post['status']) => {
       </div>
 
       <p v-else class="text-xs text-gray-400 italic py-6 text-center">
-        No posts match your filters.
+        {{ posts.length === 0 ? 'No posts yet. Create your first one.' : 'No posts match your filters.' }}
       </p>
     </section>
 
-    <!-- ===== DELETE CONFIRMATION ===== -->
+    <!-- DELETE CONFIRMATION -->
     <Transition name="fade">
       <div
         v-if="deleteTarget"
@@ -251,7 +303,7 @@ const statusBadge = (s: Post['status']) => {
         <div class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-sm">
           <h3 class="text-base font-bold text-[#1a1a1a] mb-2">Delete post?</h3>
           <p class="text-sm text-gray-600 mb-5 break-words">
-            "{{ deleteTarget.title }}" will be permanently removed. This cannot be undone.
+            "{{ deleteTarget.title }}" will be removed. This cannot be undone.
           </p>
           <div class="flex gap-2">
             <button

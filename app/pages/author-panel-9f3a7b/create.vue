@@ -22,20 +22,32 @@ const readTimeComputed = computed(() => {
   return `${readValue.value} ${readUnit.value} read`
 })
 
-type BlockType = 'p' | 'heading' | 'highlight' | 'list' | 'signature' | 'signatureName' | 'signatureRole' | 'signatureContact'
+type BlockType =
+  | 'p'
+  | 'heading'
+  | 'highlight'
+  | 'list'
+  | 'link'
+  | 'signature'
+  | 'signatureName'
+  | 'signatureRole'
+  | 'signatureContact'
 
 interface Block {
   id: number
   type: BlockType
   text?: string
   items?: string[]
+  url?: string
+  label?: string
 }
 
-const blockTypes: { value: BlockType; label: string; hint: string; input: 'short' | 'long' | 'list' }[] = [
+const blockTypes: { value: BlockType; label: string; hint: string; input: 'short' | 'long' | 'list' | 'link' }[] = [
   { value: 'p',               label: 'Paragraph',       hint: 'Normal body paragraph',                          input: 'long' },
   { value: 'heading',         label: 'Section Heading', hint: 'Bold section title',                             input: 'short' },
   { value: 'highlight',       label: 'Highlight Box',   hint: 'Red-bordered callout for key points',            input: 'long' },
   { value: 'list',            label: 'Bullet List',     hint: 'One item per line',                              input: 'list' },
+  { value: 'link',            label: 'Link / Reference',hint: 'Add a clickable link (website, social, reference)', input: 'link' },
   { value: 'signature',       label: 'Signature line',  hint: 'e.g. Yours in Education...',                     input: 'short' },
   { value: 'signatureName',   label: 'Signature name',  hint: 'Bold name',                                      input: 'short' },
   { value: 'signatureRole',   label: 'Signature role',  hint: 'Small grey line',                                input: 'short' },
@@ -56,12 +68,38 @@ const categories = [
 const blocks = ref<Block[]>([])
 const newBlockType = ref<BlockType>('p')
 const newBlockText = ref('')
+const newBlockUrl = ref('')
+const newBlockLabel = ref('')
 const editingId = ref<number | null>(null)
 
 const currentTypeInfo = computed(() => blockTypes.find((b) => b.value === newBlockType.value)!)
 
+const { show: showToast } = useToast()
+
 const addBlock = () => {
-  if (!newBlockText.value.trim()) return
+  const isLink = newBlockType.value === 'link'
+
+  if (isLink) {
+    if (!newBlockUrl.value.trim()) return showToast('Link URL is required.')
+    const block: Block = {
+      id: Date.now(),
+      type: 'link',
+      url: newBlockUrl.value.trim(),
+      label: newBlockLabel.value.trim() || newBlockUrl.value.trim(),
+    }
+    if (editingId.value !== null) {
+      const idx = blocks.value.findIndex((b) => b.id === editingId.value)
+      if (idx !== -1) blocks.value[idx] = { ...block, id: editingId.value }
+      editingId.value = null
+    } else {
+      blocks.value.push(block)
+    }
+    newBlockUrl.value = ''
+    newBlockLabel.value = ''
+    return
+  }
+
+  if (!newBlockText.value.trim()) return showToast('Content is required.')
   const block: Block = { id: Date.now(), type: newBlockType.value }
   if (newBlockType.value === 'list') {
     block.items = newBlockText.value.split('\n').map((s) => s.trim()).filter(Boolean)
@@ -81,7 +119,12 @@ const addBlock = () => {
 const editBlock = (b: Block) => {
   editingId.value = b.id
   newBlockType.value = b.type
-  newBlockText.value = b.type === 'list' ? (b.items || []).join('\n') : (b.text || '')
+  if (b.type === 'link') {
+    newBlockUrl.value = b.url || ''
+    newBlockLabel.value = b.label || ''
+  } else {
+    newBlockText.value = b.type === 'list' ? (b.items || []).join('\n') : (b.text || '')
+  }
 }
 
 const deleteBlock = (id: number) => {
@@ -103,6 +146,8 @@ const moveDown = (i: number) => {
 const cancelEdit = () => {
   editingId.value = null
   newBlockText.value = ''
+  newBlockUrl.value = ''
+  newBlockLabel.value = ''
 }
 
 watch(() => meta.title, (val) => {
@@ -116,15 +161,32 @@ watch(() => meta.category, (val) => {
   meta.categoryPath = c ? c.path : ''
 })
 
+// ===== IMAGE UPLOAD =====
 const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
 const pickImage = () => fileInput.value?.click()
 
-const onFileChange = (e: Event) => {
+const onFileChange = async (e: Event) => {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (!file) return
-  const reader = new FileReader()
-  reader.onload = () => { meta.image = reader.result as string }
-  reader.readAsDataURL(file)
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Image must be under 5MB.')
+    return
+  }
+  uploading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await $fetch<{ ok: boolean; url: string }>('/api/admin/uploads/image', {
+      method: 'POST',
+      body: fd,
+    })
+    if (res.ok) meta.image = res.url
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Upload failed.')
+  } finally {
+    uploading.value = false
+  }
 }
 
 const clearImage = () => {
@@ -132,15 +194,44 @@ const clearImage = () => {
   if (fileInput.value) fileInput.value.value = ''
 }
 
-const { show: showToast } = useToast()
+// ===== SAVE =====
+const publishing = ref(false)
 
-const publish = () => {
+const savePost = async (status: 'published' | 'draft') => {
   if (!meta.title.trim()) return showToast('Please add a title.')
   if (!meta.category) return showToast('Please choose a category.')
   if (!blocks.value.length) return showToast('Please add at least one content block.')
-  console.log('ARTICLE TO SAVE:', { ...meta, readTime: readTimeComputed.value, body: blocks.value })
-  showToast('Preview only — saving wired tomorrow.')
+  if (!meta.slug.trim()) return showToast('Slug is required.')
+
+  publishing.value = true
+  try {
+    await $fetch('/api/admin/posts', {
+      method: 'POST',
+      body: {
+        title: meta.title.trim(),
+        subtitle: meta.subtitle.trim() || null,
+        slug: meta.slug.trim(),
+        category: meta.category,
+        categoryPath: meta.categoryPath,
+        image: meta.image || null,
+        author: meta.author,
+        date: meta.date,
+        readTime: readTimeComputed.value || null,
+        status,
+        body: blocks.value,
+      },
+    })
+    showToast(status === 'published' ? 'Post published!' : 'Draft saved!')
+    setTimeout(() => navigateTo('/author-panel-9f3a7b/posts'), 800)
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not save post.')
+  } finally {
+    publishing.value = false
+  }
 }
+
+const publish = () => savePost('published')
+const saveDraft = () => savePost('draft')
 </script>
 
 <template>
@@ -228,11 +319,12 @@ const publish = () => {
           <button
             v-if="!meta.image"
             type="button"
-            class="w-full flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-gray-300 rounded text-sm text-gray-600 hover:border-[#cc0000] hover:text-[#cc0000] transition-colors"
+            :disabled="uploading"
+            class="w-full flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-gray-300 rounded text-sm text-gray-600 hover:border-[#cc0000] hover:text-[#cc0000] transition-colors disabled:opacity-60"
             @click="pickImage"
           >
             <Icon icon="fa6-solid:cloud-arrow-up" />
-            Click to upload image
+            {{ uploading ? 'Uploading…' : 'Click to upload image' }}
           </button>
 
           <div v-else class="border border-gray-200 rounded overflow-hidden">
@@ -240,9 +332,10 @@ const publish = () => {
             <div class="flex gap-2 p-2 bg-[#f8f8f8] border-t border-gray-200">
               <button
                 type="button"
-                class="flex-1 text-xs font-semibold py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
+                class="flex-1 text-xs font-semibold py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-60"
+                :disabled="uploading"
                 @click="pickImage"
-              >Change</button>
+              >{{ uploading ? 'Uploading…' : 'Change' }}</button>
               <button
                 type="button"
                 class="flex-1 text-xs font-semibold py-1.5 rounded bg-[#cc0000] text-white hover:bg-[#990000]"
@@ -288,17 +381,40 @@ const publish = () => {
           <p class="text-[0.65rem] text-gray-500 mt-1">{{ currentTypeInfo.hint }}</p>
         </div>
 
-        <div>
-          <label class="block text-xs font-semibold mb-1">
-            {{ newBlockType === 'list' ? 'Items (one per line)' : 'Text' }}
-          </label>
-          <textarea
-            v-model="newBlockText"
-            :rows="currentTypeInfo.input === 'long' || newBlockType === 'list' ? 5 : 2"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            :placeholder="newBlockType === 'list' ? 'First item\nSecond item\nThird item' : 'Type or paste content here...'"
-          ></textarea>
-        </div>
+        <template v-if="newBlockType === 'link'">
+          <div>
+            <label class="block text-xs font-semibold mb-1">URL *</label>
+            <input
+              v-model="newBlockUrl"
+              type="url"
+              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              placeholder="https://example.com or https://wa.me/..."
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1">Label (optional)</label>
+            <input
+              v-model="newBlockLabel"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              placeholder="Text to display. If empty, shows the URL"
+            />
+          </div>
+        </template>
+
+        <template v-else>
+          <div>
+            <label class="block text-xs font-semibold mb-1">
+              {{ newBlockType === 'list' ? 'Items (one per line)' : 'Text' }}
+            </label>
+            <textarea
+              v-model="newBlockText"
+              :rows="currentTypeInfo.input === 'long' || newBlockType === 'list' ? 5 : 2"
+              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              :placeholder="newBlockType === 'list' ? 'First item\nSecond item\nThird item' : 'Type or paste content here...'"
+            ></textarea>
+          </div>
+        </template>
 
         <div class="flex gap-2">
           <button
@@ -329,7 +445,11 @@ const publish = () => {
               {{ blockTypes.find(x => x.value === b.type)?.label }}
             </div>
             <div class="text-xs text-gray-700 truncate">
-              {{ b.type === 'list' ? (b.items || []).join(' · ') : b.text }}
+              <template v-if="b.type === 'list'">{{ (b.items || []).join(' · ') }}</template>
+              <template v-else-if="b.type === 'link'">
+                {{ b.label }} — <span class="font-mono text-gray-500">{{ b.url }}</span>
+              </template>
+              <template v-else>{{ b.text }}</template>
             </div>
           </div>
           <div class="flex flex-col gap-0.5">
@@ -345,12 +465,14 @@ const publish = () => {
 
       <div class="mt-6 flex flex-col sm:flex-row gap-2">
         <button
-          class="flex-1 bg-[#cc0000] text-white py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000]"
+          :disabled="publishing"
+          class="flex-1 bg-[#cc0000] text-white py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000] disabled:opacity-60"
           @click="publish"
-        >Publish</button>
+        >{{ publishing ? 'Saving…' : 'Publish' }}</button>
         <button
-          class="flex-1 bg-[#e8e8e8] text-[#1a1a1a] py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#d0d0d0]"
-          @click="publish"
+          :disabled="publishing"
+          class="flex-1 bg-[#e8e8e8] text-[#1a1a1a] py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#d0d0d0] disabled:opacity-60"
+          @click="saveDraft"
         >Save Draft</button>
       </div>
     </section>
@@ -389,9 +511,11 @@ const publish = () => {
         <div class="space-y-3">
           <template v-for="b in blocks" :key="b.id">
             <h2 v-if="b.type === 'heading'" class="text-lg font-bold text-[#1a1a1a] mt-4 break-words">{{ b.text }}</h2>
+
             <div v-else-if="b.type === 'highlight'" class="bg-[#f8f8f8] border-l-4 border-[#cc0000] px-3 py-3 my-2">
               <p class="text-sm font-bold text-[#1a1a1a] leading-relaxed break-words">{{ b.text }}</p>
             </div>
+
             <ul v-else-if="b.type === 'list'" class="my-2 space-y-1 pl-4">
               <li
                 v-for="(item, j) in b.items"
@@ -401,10 +525,24 @@ const publish = () => {
                 <span>{{ item }}</span>
               </li>
             </ul>
+
+            <div v-else-if="b.type === 'link'" class="my-2">
+              <a
+                :href="b.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-2 text-sm font-bold text-[#cc0000] hover:underline break-all"
+              >
+                <Icon icon="fa6-solid:link" class="text-xs" />
+                {{ b.label || b.url }}
+              </a>
+            </div>
+
             <p v-else-if="b.type === 'signature'" class="text-sm text-gray-700 mt-4 italic break-words">{{ b.text }}</p>
             <p v-else-if="b.type === 'signatureName'" class="text-base font-bold text-[#1a1a1a] mt-2 break-words">{{ b.text }}</p>
             <p v-else-if="b.type === 'signatureRole'" class="text-xs text-gray-500 break-words">{{ b.text }}</p>
             <p v-else-if="b.type === 'signatureContact'" class="text-xs text-[#cc0000] font-semibold break-words">{{ b.text }}</p>
+
             <p v-else class="text-sm text-gray-700 leading-relaxed break-words">{{ b.text }}</p>
           </template>
 

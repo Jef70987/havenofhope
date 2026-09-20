@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+
 const { share } = useShare()
 
 const message = ref('9th September 2026 — 20 years completed')
-const formData = reactive({ name: '', phone: '', interest: '' })
 const formStatus = ref('')
+const submitting = ref(false)
+
+const formData = reactive({
+  name: '',
+  phone: '',
+  interest: '',
+})
 
 const celebrateBtn = () => {
   message.value = '20 YEARS! From KSh 6,500 to transforming schools across Kenya'
@@ -17,16 +24,62 @@ const statsBtn = () => {
 const resetBtn = () => {
   message.value = '9th September 2026 — 20 years completed'
 }
-const handleFormSubmit = () => {
-  if (formData.name && formData.phone && formData.interest) {
-    formStatus.value = 'Thank you! Your message has been sent.'
+
+// Strict validation before touching the network
+const EMAIL_PHONE_REGEX = /^[0-9+()\-\s]{7,20}$/
+
+const validateForm = (): string | null => {
+  const name = formData.name.trim()
+  const phone = formData.phone.trim()
+  const interest = formData.interest.trim()
+
+  if (!name || name.length < 2) return 'Please enter your full name.'
+  if (name.length > 120) return 'Name is too long.'
+  if (!phone) return 'Please enter your phone number.'
+  if (phone.length > 30) return 'Phone number is too long.'
+  if (!interest || interest.length < 5) return 'Please describe your interest.'
+  if (interest.length > 1000) return 'Description is too long (max 1000 chars).'
+
+  return null
+}
+
+const handleFormSubmit = async () => {
+  if (submitting.value) return
+
+  formStatus.value = ''
+  const err = validateForm()
+  if (err) {
+    formStatus.value = err
+    setTimeout(() => { formStatus.value = '' }, 4000)
+    return
+  }
+
+  // Snapshot values so we can safely clear only on success
+  const payload = {
+    name: formData.name.trim(),
+    phone: formData.phone.trim(),
+    interest: formData.interest.trim(),
+  }
+
+  submitting.value = true
+  try {
+    await $fetch('/api/contact', {
+      method: 'POST',
+      body: payload,
+    })
+
+    // Clear the form only after the server confirms success
     formData.name = ''
     formData.phone = ''
     formData.interest = ''
+
+    formStatus.value = 'Thank you! Your message has been sent.'
     setTimeout(() => { formStatus.value = '' }, 5000)
-  } else {
-    formStatus.value = 'Please fill in all fields.'
-    setTimeout(() => { formStatus.value = '' }, 3000)
+  } catch (e: any) {
+    formStatus.value = e?.data?.statusMessage || 'Could not send message. Please try again.'
+    setTimeout(() => { formStatus.value = '' }, 5000)
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -258,18 +311,57 @@ const handleFormSubmit = () => {
     <form class="space-y-4 max-w-2xl" @submit.prevent="handleFormSubmit">
       <div>
         <label for="name" class="block text-sm font-semibold text-[#1a1a1a] mb-1">Full Name</label>
-        <input id="name" v-model="formData.name" type="text" class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded" placeholder="Enter your full name" required />
+        <input
+          id="name"
+          v-model="formData.name"
+          type="text"
+          maxlength="120"
+          class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded"
+          placeholder="Enter your full name"
+          :disabled="submitting"
+          required
+        />
       </div>
       <div>
         <label for="phone" class="block text-sm font-semibold text-[#1a1a1a] mb-1">Phone Number</label>
-        <input id="phone" v-model="formData.phone" type="tel" class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded" placeholder="Enter your phone number" required />
+        <input
+          id="phone"
+          v-model="formData.phone"
+          type="tel"
+          maxlength="30"
+          class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded"
+          placeholder="Enter your phone number"
+          :disabled="submitting"
+          required
+        />
       </div>
       <div>
         <label for="interest" class="block text-sm font-semibold text-[#1a1a1a] mb-1">Description of Interest</label>
-        <textarea id="interest" v-model="formData.interest" rows="4" class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded" placeholder="Briefly describe your interest or how you'd like to connect" required></textarea>
+        <textarea
+          id="interest"
+          v-model="formData.interest"
+          rows="4"
+          maxlength="1000"
+          class="w-full px-3 py-2 border border-[#e8e8e8] bg-white text-sm text-[#1a1a1a] focus:outline-none focus:border-[#cc0000] rounded"
+          placeholder="Briefly describe your interest or how you'd like to connect"
+          :disabled="submitting"
+          required
+        ></textarea>
       </div>
-      <button type="submit" class="bg-[#cc0000] text-white px-6 py-2 font-semibold text-sm uppercase tracking-wider hover:bg-[#990000] transition-colors rounded">Send Message</button>
-      <p v-if="formStatus" :class="formStatus.includes('Thank you') ? 'text-green-700' : 'text-red-700'" class="text-sm mt-2">{{ formStatus }}</p>
+      <button
+        type="submit"
+        class="bg-[#cc0000] text-white px-6 py-2 font-semibold text-sm uppercase tracking-wider hover:bg-[#990000] transition-colors rounded disabled:opacity-60 disabled:cursor-not-allowed"
+        :disabled="submitting"
+      >
+        {{ submitting ? 'Sending…' : 'Send Message' }}
+      </button>
+      <p
+        v-if="formStatus"
+        :class="formStatus.includes('Thank you') ? 'text-green-700' : 'text-[#cc0000]'"
+        class="text-sm mt-2"
+      >
+        {{ formStatus }}
+      </p>
     </form>
   </div>
 </template>

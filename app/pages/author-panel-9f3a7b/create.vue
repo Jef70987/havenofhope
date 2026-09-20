@@ -167,25 +167,44 @@ const uploading = ref(false)
 const pickImage = () => fileInput.value?.click()
 
 const onFileChange = async (e: Event) => {
-  const file = (e.target as HTMLInputElement).files?.[0]
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
   if (!file) return
   if (file.size > 5 * 1024 * 1024) {
     showToast('Image must be under 5MB.')
+    input.value = ''
     return
   }
+
   uploading.value = true
   try {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await $fetch<{ ok: boolean; url: string }>('/api/admin/uploads/image', {
+
+    const raw = await fetch('/api/admin/uploads/image', {
       method: 'POST',
       body: fd,
+      credentials: 'same-origin',
     })
-    if (res.ok) meta.image = res.url
+
+    const res = (await raw.json()) as { ok?: boolean; url?: string; statusMessage?: string }
+
+    if (!raw.ok) {
+      showToast(res?.statusMessage || `Upload failed (${raw.status}).`)
+      return
+    }
+
+    if (res?.url) {
+      meta.image = res.url
+      showToast('Image uploaded.')
+    } else {
+      showToast('Upload succeeded but no URL was returned.')
+    }
   } catch (err: any) {
-    showToast(err?.data?.statusMessage || 'Upload failed.')
+    showToast(err?.message || 'Upload failed.')
   } finally {
     uploading.value = false
+    input.value = ''
   }
 }
 

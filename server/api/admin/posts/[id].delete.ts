@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../../utils/supabase'
 import { requireAuth } from '../../../utils/requireAuth'
 import { writeAudit } from '../../../utils/audit'
+import { clearPublicCache } from '../../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -14,9 +15,7 @@ export default defineEventHandler(async (event) => {
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (!existing) {
-    throw createError({ statusCode: 404, statusMessage: 'Post not found.' })
-  }
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'Post not found.' })
 
   const { error } = await supabaseAdmin
     .from('posts')
@@ -36,6 +35,8 @@ export default defineEventHandler(async (event) => {
     description: `Soft-deleted post: ${existing.title}`,
     event,
   })
+
+  await clearPublicCache()
 
   return { ok: true }
 })

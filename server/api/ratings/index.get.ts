@@ -1,9 +1,7 @@
 import { supabaseAdmin } from '../../utils/supabase'
 
-export default defineEventHandler(async () => {
-  const { data } = await supabaseAdmin
-    .from('ratings')
-    .select('stars')
+export default defineCachedEventHandler(async () => {
+  const { data } = await supabaseAdmin.from('ratings').select('stars')
 
   const rows = data || []
   const counts: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
@@ -17,4 +15,9 @@ export default defineEventHandler(async () => {
   const average = total ? Number((sum / total).toFixed(2)) : 0
 
   return { ok: true, counts, total, average }
+}, {
+  maxAge: 60,
+  swr: true,
+  staleMaxAge: 120,
+  getKey: () => 'ratings:aggregate',
 })

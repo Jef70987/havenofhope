@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../../utils/supabase'
 
-export default defineEventHandler(async (event) => {
+export default defineCachedEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
   if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug.' })
 
@@ -16,7 +16,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Article not found.' })
   }
 
-  // Increment view counter (fire and forget — non-blocking)
   supabaseAdmin
     .from('posts')
     .update({ views: (post.views || 0) + 1 })
@@ -24,4 +23,9 @@ export default defineEventHandler(async (event) => {
     .then(() => {})
 
   return { ok: true, post }
+}, {
+  maxAge: 300,
+  swr: true,
+  staleMaxAge: 900,
+  getKey: (event) => `post:${getRouterParam(event, 'slug')}`,
 })

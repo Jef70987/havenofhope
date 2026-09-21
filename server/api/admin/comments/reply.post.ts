@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../../utils/supabase'
 import { requireAuth } from '../../../utils/requireAuth'
 import { writeAudit } from '../../../utils/audit'
+import { clearPublicCache } from '../../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -53,6 +54,8 @@ export default defineEventHandler(async (event) => {
     description: `Admin reply on comment ${parentId}`,
     event,
   })
+
+  await clearPublicCache()
 
   return { ok: true, reply }
 })

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../../utils/supabase'
 import { writeAudit } from '../../../utils/audit'
+import { clearPublicCache } from '../../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
@@ -64,6 +65,8 @@ export default defineEventHandler(async (event) => {
     description: `Comment on ${slug} by ${name}`,
     event,
   })
+
+  await clearPublicCache()
 
   return { ok: true, comment }
 })

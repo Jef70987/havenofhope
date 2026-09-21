@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../../utils/supabase'
 import { requireAuth } from '../../../utils/requireAuth'
 import { writeAudit } from '../../../utils/audit'
+import { clearPublicCache } from '../../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -16,7 +17,6 @@ export default defineEventHandler(async (event) => {
 
   if (!existing) throw createError({ statusCode: 404, statusMessage: 'Comment not found.' })
 
-  // Also soft-delete any replies
   await supabaseAdmin
     .from('comments')
     .update({ deleted_at: new Date().toISOString() })
@@ -41,6 +41,8 @@ export default defineEventHandler(async (event) => {
     description: `Deleted comment by ${existing.name}`,
     event,
   })
+
+  await clearPublicCache()
 
   return { ok: true }
 })

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../../utils/supabase'
 import { requireAuth } from '../../../utils/requireAuth'
 import { writeAudit } from '../../../utils/audit'
+import { clearPublicCache } from '../../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const user = await requireAuth(event)
@@ -9,7 +10,6 @@ export default defineEventHandler(async (event) => {
 
   if (!id) throw createError({ statusCode: 400, statusMessage: 'Missing post id.' })
 
-  // Fetch existing row
   const { data: existing } = await supabaseAdmin
     .from('posts')
     .select('*')
@@ -17,9 +17,7 @@ export default defineEventHandler(async (event) => {
     .is('deleted_at', null)
     .maybeSingle()
 
-  if (!existing) {
-    throw createError({ statusCode: 404, statusMessage: 'Post not found.' })
-  }
+  if (!existing) throw createError({ statusCode: 404, statusMessage: 'Post not found.' })
 
   const update: any = { updated_by: user.id }
 
@@ -29,7 +27,6 @@ export default defineEventHandler(async (event) => {
       ? (existing.published_at || new Date().toISOString())
       : null
   }
-
   if (typeof body?.title === 'string') update.title = body.title.trim()
   if (typeof body?.subtitle === 'string') update.subtitle = body.subtitle.trim() || null
   if (typeof body?.slug === 'string') update.slug = body.slug.trim()
@@ -62,6 +59,8 @@ export default defineEventHandler(async (event) => {
     afterData: post,
     event,
   })
+
+  await clearPublicCache()
 
   return { ok: true, post }
 })

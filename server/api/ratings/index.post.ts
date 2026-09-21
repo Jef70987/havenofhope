@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../utils/supabase'
+import { clearPublicCache } from '../../utils/cache'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
@@ -25,6 +26,8 @@ export default defineEventHandler(async (event) => {
     console.error('[ratings.upsert] error:', error)
     throw createError({ statusCode: 500, statusMessage: 'Could not save rating.' })
   }
+
+  await clearPublicCache()
 
   return { ok: true }
 })

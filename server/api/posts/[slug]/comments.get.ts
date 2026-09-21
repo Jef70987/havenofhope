@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../../../utils/supabase'
 
-export default defineEventHandler(async (event) => {
+export default defineCachedEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug')
   if (!slug) throw createError({ statusCode: 400, statusMessage: 'Missing slug.' })
 
@@ -29,10 +29,12 @@ export default defineEventHandler(async (event) => {
     return acc
   }, {})
 
-  const result = top.map((c) => ({
-    ...c,
-    replies: byParent[c.id] || [],
-  }))
+  const result = top.map((c) => ({ ...c, replies: byParent[c.id] || [] }))
 
   return { ok: true, comments: result }
+}, {
+  maxAge: 30,
+  swr: true,
+  staleMaxAge: 60,
+  getKey: (event) => `comments:${getRouterParam(event, 'slug')}`,
 })

@@ -20,19 +20,12 @@ interface Post {
   published_at: string | null
 }
 
-const loading = ref(true)
-const posts = ref<Post[]>([])
-
-onMounted(async () => {
-  try {
-    const res = await $fetch<{ ok: boolean; posts: Post[] }>('/api/posts')
-    posts.value = res.posts || []
-  } catch {
-    posts.value = []
-  } finally {
-    loading.value = false
-  }
+const { data, pending: loading } = await useFetch<{ ok: boolean; posts: Post[] }>('/api/posts', {
+  key: 'posts:home',
+  default: () => ({ ok: true, posts: [] }),
 })
+
+const posts = computed(() => data.value?.posts || [])
 
 // Helper: first paragraph as excerpt
 const excerptOf = (p: Post) => {

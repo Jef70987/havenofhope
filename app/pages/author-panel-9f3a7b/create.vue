@@ -3,6 +3,10 @@ import { Icon } from '@iconify/vue'
 
 definePageMeta({ layout: 'admin' })
 
+const route = useRoute()
+const editSlug = computed(() => route.query.slug as string | undefined)
+const isEditMode = computed(() => !!editSlug.value)
+
 const meta = reactive({
   title: '',
   subtitle: '',
@@ -23,15 +27,8 @@ const readTimeComputed = computed(() => {
 })
 
 type BlockType =
-  | 'p'
-  | 'heading'
-  | 'highlight'
-  | 'list'
-  | 'link'
-  | 'signature'
-  | 'signatureName'
-  | 'signatureRole'
-  | 'signatureContact'
+  | 'p' | 'heading' | 'highlight' | 'list' | 'link'
+  | 'signature' | 'signatureName' | 'signatureRole' | 'signatureContact'
 
 interface Block {
   id: number
@@ -43,15 +40,15 @@ interface Block {
 }
 
 const blockTypes: { value: BlockType; label: string; hint: string; input: 'short' | 'long' | 'list' | 'link' }[] = [
-  { value: 'p',               label: 'Paragraph',       hint: 'Normal body paragraph',                          input: 'long' },
-  { value: 'heading',         label: 'Section Heading', hint: 'Bold section title',                             input: 'short' },
-  { value: 'highlight',       label: 'Highlight Box',   hint: 'Red-bordered callout for key points',            input: 'long' },
-  { value: 'list',            label: 'Bullet List',     hint: 'One item per line',                              input: 'list' },
-  { value: 'link',            label: 'Link / Reference',hint: 'Add a clickable link (website, social, reference)', input: 'link' },
-  { value: 'signature',       label: 'Signature line',  hint: 'e.g. Yours in Education...',                     input: 'short' },
-  { value: 'signatureName',   label: 'Signature name',  hint: 'Bold name',                                      input: 'short' },
-  { value: 'signatureRole',   label: 'Signature role',  hint: 'Small grey line',                                input: 'short' },
-  { value: 'signatureContact',label: 'Signature contact',hint:'Red contact line',                                input: 'short' },
+  { value: 'p',                label: 'Paragraph',        hint: 'Normal body paragraph',                           input: 'long' },
+  { value: 'heading',          label: 'Section Heading',  hint: 'Bold section title',                              input: 'short' },
+  { value: 'highlight',        label: 'Highlight Box',    hint: 'Red-bordered callout for key points',             input: 'long' },
+  { value: 'list',             label: 'Bullet List',      hint: 'One item per line',                               input: 'list' },
+  { value: 'link',             label: 'Link / Reference', hint: 'Add a clickable link (website, social, reference)', input: 'link' },
+  { value: 'signature',        label: 'Signature line',   hint: 'e.g. Yours in Education...',                      input: 'short' },
+  { value: 'signatureName',    label: 'Signature name',   hint: 'Bold name',                                       input: 'short' },
+  { value: 'signatureRole',    label: 'Signature role',   hint: 'Small grey line',                                 input: 'short' },
+  { value: 'signatureContact', label: 'Signature contact',hint: 'Red contact line',                                 input: 'short' },
 ]
 
 const categories = [
@@ -151,7 +148,7 @@ const cancelEdit = () => {
 }
 
 watch(() => meta.title, (val) => {
-  if (!meta.slug) {
+  if (!isEditMode.value && !meta.slug) {
     meta.slug = val.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60)
   }
 })
@@ -159,6 +156,51 @@ watch(() => meta.title, (val) => {
 watch(() => meta.category, (val) => {
   const c = categories.find((x) => x.label === val)
   meta.categoryPath = c ? c.path : ''
+})
+
+// ===== LOAD EXISTING POST (EDIT MODE) =====
+const loading = ref(false)
+const loadedPostId = ref<string | null>(null)
+
+const parseReadTime = (readTime: string | null) => {
+  if (!readTime) return
+  const match = readTime.match(/^(\d+)\s+(sec|min|hr|days)\s+read$/i)
+  if (match) {
+    readValue.value = Number(match[1])
+    readUnit.value = match[2] as any
+  }
+}
+
+onMounted(async () => {
+  if (!editSlug.value) return
+  loading.value = true
+  try {
+    // Fetch by slug — we use the public route since it's already cached, then get id
+    const res = await $fetch<{ ok: boolean; post: any }>(`/api/posts/${editSlug.value}`)
+    const p = res.post
+    if (!p) throw new Error('Post not found')
+
+    loadedPostId.value = p.id
+    meta.title = p.title || ''
+    meta.subtitle = p.subtitle || ''
+    meta.slug = p.slug || ''
+    meta.category = p.category || ''
+    meta.categoryPath = p.category_path || ''
+    meta.image = p.image || ''
+    meta.author = p.author || 'Mwalimu Malata Benson'
+    meta.date = p.date || ''
+
+    parseReadTime(p.read_time)
+
+    // Convert body array to blocks with ids
+    if (Array.isArray(p.body)) {
+      blocks.value = p.body.map((b: any, i: number) => ({ ...b, id: Date.now() + i }))
+    }
+  } catch (err: any) {
+    showToast(err?.data?.statusMessage || 'Could not load post for editing.')
+  } finally {
+    loading.value = false
+  }
 })
 
 // ===== IMAGE UPLOAD =====
@@ -198,7 +240,7 @@ const onFileChange = async (e: Event) => {
       meta.image = res.url
       showToast('Image uploaded.')
     } else {
-      showToast('Upload succeeded but no URL was returned.')
+      showToast('Upload succeeded but no URL returned.')
     }
   } catch (err: any) {
     showToast(err?.message || 'Upload failed.')
@@ -224,23 +266,34 @@ const savePost = async (status: 'published' | 'draft') => {
 
   publishing.value = true
   try {
-    await $fetch('/api/admin/posts', {
-      method: 'POST',
-      body: {
-        title: meta.title.trim(),
-        subtitle: meta.subtitle.trim() || null,
-        slug: meta.slug.trim(),
-        category: meta.category,
-        categoryPath: meta.categoryPath,
-        image: meta.image || null,
-        author: meta.author,
-        date: meta.date,
-        readTime: readTimeComputed.value || null,
-        status,
-        body: blocks.value,
-      },
-    })
-    showToast(status === 'published' ? 'Post published!' : 'Draft saved!')
+    const payload = {
+      title: meta.title.trim(),
+      subtitle: meta.subtitle.trim() || null,
+      slug: meta.slug.trim(),
+      category: meta.category,
+      categoryPath: meta.categoryPath,
+      image: meta.image || null,
+      author: meta.author,
+      date: meta.date,
+      readTime: readTimeComputed.value || null,
+      status,
+      body: blocks.value.map(({ id, ...rest }) => rest), // strip client-side id
+    }
+
+    if (isEditMode.value && loadedPostId.value) {
+      await $fetch(`/api/admin/posts/${loadedPostId.value}`, {
+        method: 'PATCH',
+        body: payload,
+      })
+      showToast(status === 'published' ? 'Post updated!' : 'Draft saved!')
+    } else {
+      await $fetch('/api/admin/posts', {
+        method: 'POST',
+        body: payload,
+      })
+      showToast(status === 'published' ? 'Post published!' : 'Draft saved!')
+    }
+
     setTimeout(() => navigateTo('/author-panel-9f3a7b/posts'), 800)
   } catch (err: any) {
     showToast(err?.data?.statusMessage || 'Could not save post.')
@@ -258,242 +311,248 @@ const saveDraft = () => savePost('draft')
     <!-- FORM -->
     <section class="bg-white rounded-lg shadow border border-[#e8e8e8] p-4 md:p-5 w-full min-w-0">
       <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] mb-4 border-l-4 border-[#cc0000] pl-2">
-        Create / Draft Article Details
+        {{ isEditMode ? 'Edit Article' : 'Create / Draft Article Details' }}
       </h2>
 
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold mb-1">Title *</label>
-          <input
-            v-model="meta.title"
-            type="text"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="e.g. TSC Re-Advertises 1,631 Promotion Jobs for Teachers"
-          />
+      <div v-if="loading" class="text-center py-6">
+        <p class="text-xs text-gray-500">Loading post…</p>
+      </div>
+
+      <template v-else>
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold mb-1">Title *</label>
+            <input
+              v-model="meta.title"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              placeholder="e.g. TSC Re-Advertises 1,631 Promotion Jobs for Teachers"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold mb-1">Subtitle (optional)</label>
+            <input
+              v-model="meta.subtitle"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              placeholder="Short subtitle or note"
+            />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="min-w-0">
+              <label class="block text-xs font-semibold mb-1">Category *</label>
+              <select
+                v-model="meta.category"
+                class="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-[#1a1a1a]"
+              >
+                <option value="">Choose...</option>
+                <option v-for="c in categories" :key="c.label" :value="c.label">{{ c.label }}</option>
+              </select>
+            </div>
+            <div class="min-w-0">
+              <label class="block text-xs font-semibold mb-1">Read Time</label>
+              <div class="flex gap-2">
+                <input
+                  v-model.number="readValue"
+                  type="number"
+                  min="0"
+                  class="w-16 sm:w-20 px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+                  placeholder="5"
+                />
+                <select
+                  v-model="readUnit"
+                  class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-[#1a1a1a]"
+                >
+                  <option value="sec">sec</option>
+                  <option value="min">min</option>
+                  <option value="hr">hr</option>
+                  <option value="days">days</option>
+                </select>
+                <span class="self-center text-xs text-gray-500">read</span>
+              </div>
+              <p class="text-[0.65rem] text-gray-500 mt-1">
+                Preview: {{ readTimeComputed || '—' }}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold mb-1">Slug</label>
+            <input
+              v-model="meta.slug"
+              type="text"
+              class="w-full px-3 py-2 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:border-[#1a1a1a]"
+              placeholder="kiswahili-workshop-nakuru"
+            />
+            <p class="text-[0.65rem] text-gray-500 mt-1 break-all">URL: /article/{{ meta.slug || '...' }}</p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold mb-1">Featured Image</label>
+            <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChange" />
+
+            <button
+              v-if="!meta.image"
+              type="button"
+              :disabled="uploading"
+              class="w-full flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-gray-300 rounded text-sm text-gray-600 hover:border-[#cc0000] hover:text-[#cc0000] transition-colors disabled:opacity-60"
+              @click="pickImage"
+            >
+              <Icon icon="fa6-solid:cloud-arrow-up" />
+              {{ uploading ? 'Uploading…' : 'Click to upload image' }}
+            </button>
+
+            <div v-else class="border border-gray-200 rounded overflow-hidden">
+              <img :src="meta.image" alt="Featured" class="w-full h-40 object-cover bg-[#f0f0f0]" />
+              <div class="flex gap-2 p-2 bg-[#f8f8f8] border-t border-gray-200">
+                <button
+                  type="button"
+                  class="flex-1 text-xs font-semibold py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-60"
+                  :disabled="uploading"
+                  @click="pickImage"
+                >{{ uploading ? 'Uploading…' : 'Change' }}</button>
+                <button
+                  type="button"
+                  class="flex-1 text-xs font-semibold py-1.5 rounded bg-[#cc0000] text-white hover:bg-[#990000]"
+                  @click="clearImage"
+                >Remove</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="min-w-0">
+              <label class="block text-xs font-semibold mb-1">Author</label>
+              <input
+                v-model="meta.author"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              />
+            </div>
+            <div class="min-w-0">
+              <label class="block text-xs font-semibold mb-1">Date</label>
+              <input
+                v-model="meta.date"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+              />
+            </div>
+          </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-semibold mb-1">Subtitle (optional)</label>
-          <input
-            v-model="meta.subtitle"
-            type="text"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="Short subtitle or note"
-          />
-        </div>
+        <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] mt-6 mb-3 border-l-4 border-[#cc0000] pl-2">
+          Body Content
+        </h2>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="min-w-0">
-            <label class="block text-xs font-semibold mb-1">Category *</label>
+        <div class="bg-[#f8f8f8] border border-[#e8e8e8] rounded p-3 space-y-2">
+          <div>
+            <label class="block text-xs font-semibold mb-1">Block type</label>
             <select
-              v-model="meta.category"
+              v-model="newBlockType"
               class="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-[#1a1a1a]"
             >
-              <option value="">Choose...</option>
-              <option v-for="c in categories" :key="c.label" :value="c.label">{{ c.label }}</option>
+              <option v-for="b in blockTypes" :key="b.value" :value="b.value">{{ b.label }}</option>
             </select>
+            <p class="text-[0.65rem] text-gray-500 mt-1">{{ currentTypeInfo.hint }}</p>
           </div>
-          <div class="min-w-0">
-            <label class="block text-xs font-semibold mb-1">Read Time</label>
-            <div class="flex gap-2">
+
+          <template v-if="newBlockType === 'link'">
+            <div>
+              <label class="block text-xs font-semibold mb-1">URL *</label>
               <input
-                v-model.number="readValue"
-                type="number"
-                min="0"
-                class="w-16 sm:w-20 px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-                placeholder="5"
+                v-model="newBlockUrl"
+                type="url"
+                class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+                placeholder="https://example.com"
               />
-              <select
-                v-model="readUnit"
-                class="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-[#1a1a1a]"
-              >
-                <option value="sec">sec</option>
-                <option value="min">min</option>
-                <option value="hr">hr</option>
-                <option value="days">days</option>
-              </select>
-              <span class="self-center text-xs text-gray-500">read</span>
             </div>
-            <p class="text-[0.65rem] text-gray-500 mt-1">
-              Preview: {{ readTimeComputed || '—' }}
-            </p>
+            <div>
+              <label class="block text-xs font-semibold mb-1">Label (optional)</label>
+              <input
+                v-model="newBlockLabel"
+                type="text"
+                class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+                placeholder="Text to display"
+              />
+            </div>
+          </template>
+
+          <template v-else>
+            <div>
+              <label class="block text-xs font-semibold mb-1">
+                {{ newBlockType === 'list' ? 'Items (one per line)' : 'Text' }}
+              </label>
+              <textarea
+                v-model="newBlockText"
+                :rows="currentTypeInfo.input === 'long' || newBlockType === 'list' ? 5 : 2"
+                class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
+                :placeholder="newBlockType === 'list' ? 'First item\nSecond item' : 'Type or paste content here...'"
+              ></textarea>
+            </div>
+          </template>
+
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="flex-1 bg-[#cc0000] text-white py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000]"
+              @click="addBlock"
+            >
+              {{ editingId !== null ? 'Save Changes' : '+ Add Block' }}
+            </button>
+            <button
+              v-if="editingId !== null"
+              type="button"
+              class="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded bg-[#e8e8e8] hover:bg-[#d0d0d0]"
+              @click="cancelEdit"
+            >Cancel</button>
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-semibold mb-1">Slug (auto from title)</label>
-          <input
-            v-model="meta.slug"
-            type="text"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:border-[#1a1a1a]"
-            placeholder="kiswahili-workshop-nakuru"
-          />
-          <p class="text-[0.65rem] text-gray-500 mt-1 break-all">URL: /article/{{ meta.slug || '...' }}</p>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold mb-1">Featured Image</label>
-          <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChange" />
-
-          <button
-            v-if="!meta.image"
-            type="button"
-            :disabled="uploading"
-            class="w-full flex items-center justify-center gap-2 px-3 py-3 border-2 border-dashed border-gray-300 rounded text-sm text-gray-600 hover:border-[#cc0000] hover:text-[#cc0000] transition-colors disabled:opacity-60"
-            @click="pickImage"
+        <div v-if="blocks.length" class="mt-4 space-y-2">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-gray-500">Blocks ({{ blocks.length }})</h3>
+          <div
+            v-for="(b, i) in blocks"
+            :key="b.id"
+            class="border border-[#e8e8e8] rounded p-2 bg-white flex items-start gap-2"
           >
-            <Icon icon="fa6-solid:cloud-arrow-up" />
-            {{ uploading ? 'Uploading…' : 'Click to upload image' }}
-          </button>
-
-          <div v-else class="border border-gray-200 rounded overflow-hidden">
-            <img :src="meta.image" alt="Featured" class="w-full h-40 object-cover bg-[#f0f0f0]" />
-            <div class="flex gap-2 p-2 bg-[#f8f8f8] border-t border-gray-200">
-              <button
-                type="button"
-                class="flex-1 text-xs font-semibold py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 disabled:opacity-60"
-                :disabled="uploading"
-                @click="pickImage"
-              >{{ uploading ? 'Uploading…' : 'Change' }}</button>
-              <button
-                type="button"
-                class="flex-1 text-xs font-semibold py-1.5 rounded bg-[#cc0000] text-white hover:bg-[#990000]"
-                @click="clearImage"
-              >Remove</button>
+            <div class="flex-1 min-w-0">
+              <div class="text-[0.65rem] font-bold uppercase tracking-wider text-[#cc0000]">
+                {{ blockTypes.find(x => x.value === b.type)?.label }}
+              </div>
+              <div class="text-xs text-gray-700 truncate">
+                <template v-if="b.type === 'list'">{{ (b.items || []).join(' · ') }}</template>
+                <template v-else-if="b.type === 'link'">
+                  {{ b.label }} — <span class="font-mono text-gray-500">{{ b.url }}</span>
+                </template>
+                <template v-else>{{ b.text }}</template>
+              </div>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <button class="text-gray-400 hover:text-[#1a1a1a] text-xs" @click="moveUp(i)">▲</button>
+              <button class="text-gray-400 hover:text-[#1a1a1a] text-xs" @click="moveDown(i)">▼</button>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <button class="text-gray-500 hover:text-[#1a1a1a] text-xs" @click="editBlock(b)">Edit</button>
+              <button class="text-[#cc0000] hover:underline text-xs" @click="deleteBlock(b.id)">Delete</button>
             </div>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="min-w-0">
-            <label class="block text-xs font-semibold mb-1">Author</label>
-            <input
-              v-model="meta.author"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            />
-          </div>
-          <div class="min-w-0">
-            <label class="block text-xs font-semibold mb-1">Date</label>
-            <input
-              v-model="meta.date"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-            />
-          </div>
-        </div>
-      </div>
-
-      <h2 class="text-sm font-bold uppercase tracking-wider text-[#1a1a1a] mt-6 mb-3 border-l-4 border-[#cc0000] pl-2">
-        Body Content
-      </h2>
-
-      <div class="bg-[#f8f8f8] border border-[#e8e8e8] rounded p-3 space-y-2">
-        <div>
-          <label class="block text-xs font-semibold mb-1">Block type</label>
-          <select
-            v-model="newBlockType"
-            class="w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:border-[#1a1a1a]"
-          >
-            <option v-for="b in blockTypes" :key="b.value" :value="b.value">{{ b.label }}</option>
-          </select>
-          <p class="text-[0.65rem] text-gray-500 mt-1">{{ currentTypeInfo.hint }}</p>
-        </div>
-
-        <template v-if="newBlockType === 'link'">
-          <div>
-            <label class="block text-xs font-semibold mb-1">URL *</label>
-            <input
-              v-model="newBlockUrl"
-              type="url"
-              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-              placeholder="https://example.com or https://wa.me/..."
-            />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold mb-1">Label (optional)</label>
-            <input
-              v-model="newBlockLabel"
-              type="text"
-              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-              placeholder="Text to display. If empty, shows the URL"
-            />
-          </div>
-        </template>
-
-        <template v-else>
-          <div>
-            <label class="block text-xs font-semibold mb-1">
-              {{ newBlockType === 'list' ? 'Items (one per line)' : 'Text' }}
-            </label>
-            <textarea
-              v-model="newBlockText"
-              :rows="currentTypeInfo.input === 'long' || newBlockType === 'list' ? 5 : 2"
-              class="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:border-[#1a1a1a]"
-              :placeholder="newBlockType === 'list' ? 'First item\nSecond item\nThird item' : 'Type or paste content here...'"
-            ></textarea>
-          </div>
-        </template>
-
-        <div class="flex gap-2">
+        <div class="mt-6 flex flex-col sm:flex-row gap-2">
           <button
-            type="button"
-            class="flex-1 bg-[#cc0000] text-white py-2 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000]"
-            @click="addBlock"
-          >
-            {{ editingId !== null ? 'Save Changes' : '+ Add Block' }}
-          </button>
+            :disabled="publishing"
+            class="flex-1 bg-[#cc0000] text-white py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000] disabled:opacity-60"
+            @click="publish"
+          >{{ publishing ? 'Saving…' : (isEditMode ? 'Update & Publish' : 'Publish') }}</button>
           <button
-            v-if="editingId !== null"
-            type="button"
-            class="px-4 py-2 text-xs font-bold uppercase tracking-wider rounded bg-[#e8e8e8] hover:bg-[#d0d0d0]"
-            @click="cancelEdit"
-          >Cancel</button>
+            :disabled="publishing"
+            class="flex-1 bg-[#e8e8e8] text-[#1a1a1a] py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#d0d0d0] disabled:opacity-60"
+            @click="saveDraft"
+          >{{ isEditMode ? 'Update Draft' : 'Save Draft' }}</button>
         </div>
-      </div>
-
-      <div v-if="blocks.length" class="mt-4 space-y-2">
-        <h3 class="text-xs font-bold uppercase tracking-wider text-gray-500">Blocks ({{ blocks.length }})</h3>
-        <div
-          v-for="(b, i) in blocks"
-          :key="b.id"
-          class="border border-[#e8e8e8] rounded p-2 bg-white flex items-start gap-2"
-        >
-          <div class="flex-1 min-w-0">
-            <div class="text-[0.65rem] font-bold uppercase tracking-wider text-[#cc0000]">
-              {{ blockTypes.find(x => x.value === b.type)?.label }}
-            </div>
-            <div class="text-xs text-gray-700 truncate">
-              <template v-if="b.type === 'list'">{{ (b.items || []).join(' · ') }}</template>
-              <template v-else-if="b.type === 'link'">
-                {{ b.label }} — <span class="font-mono text-gray-500">{{ b.url }}</span>
-              </template>
-              <template v-else>{{ b.text }}</template>
-            </div>
-          </div>
-          <div class="flex flex-col gap-0.5">
-            <button class="text-gray-400 hover:text-[#1a1a1a] text-xs" @click="moveUp(i)">▲</button>
-            <button class="text-gray-400 hover:text-[#1a1a1a] text-xs" @click="moveDown(i)">▼</button>
-          </div>
-          <div class="flex flex-col gap-0.5">
-            <button class="text-gray-500 hover:text-[#1a1a1a] text-xs" @click="editBlock(b)">Edit</button>
-            <button class="text-[#cc0000] hover:underline text-xs" @click="deleteBlock(b.id)">Delete</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-6 flex flex-col sm:flex-row gap-2">
-        <button
-          :disabled="publishing"
-          class="flex-1 bg-[#cc0000] text-white py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#990000] disabled:opacity-60"
-          @click="publish"
-        >{{ publishing ? 'Saving…' : 'Publish' }}</button>
-        <button
-          :disabled="publishing"
-          class="flex-1 bg-[#e8e8e8] text-[#1a1a1a] py-2.5 text-xs font-bold uppercase tracking-wider rounded hover:bg-[#d0d0d0] disabled:opacity-60"
-          @click="saveDraft"
-        >Save Draft</button>
-      </div>
+      </template>
     </section>
 
     <!-- PREVIEW -->

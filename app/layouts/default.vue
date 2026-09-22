@@ -9,7 +9,7 @@ const { message: toastMessage, visible: toastVisible } = useToast()
 const socialLinks = [
   { icon: 'fa6-brands:facebook-f', url: 'https://facebook.com',  label: 'Facebook',  color: 'bg-[#1877f2]' },
   { icon: 'fa6-brands:whatsapp',   url: 'https://wa.me/',        label: 'WhatsApp',  color: 'bg-[#25d366]' },
-  { icon: 'fa6-brands:instagram',  url: 'https://instagram.com', label: 'Instagram', color: 'bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#4f5bd5]' },
+  // { icon: 'fa6-brands:instagram',  url: 'https://instagram.com', label: 'Instagram', color: 'bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#4f5bd5]' },
   { icon: 'fa6-brands:x-twitter',  url: 'https://x.com',         label: 'X',         color: 'bg-black' },
   { icon: 'fa6-brands:youtube',    url: 'https://youtube.com',   label: 'YouTube',   color: 'bg-[#ff0000]' },
   { icon: 'fa6-brands:tiktok',     url: 'https://tiktok.com',    label: 'TikTok',    color: 'bg-black' },
@@ -176,9 +176,9 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="text-center text-[0.65rem] md:text-xs text-[#666]">
-        <strong class="text-[#cc0000]">Global Mentorship Branding</strong> · Mentorship that transforms
+        <strong class="text-[#cc0000]">Empowering Teachers Across Kenya</strong> · Mentorship that transforms
         <br />
-        <span>© {{ year }} · Empowering Teachers Across Kenya</span>
+        <span>© {{ year }} · Global Mentorship Branding </span>
       </div>
     </footer>
 

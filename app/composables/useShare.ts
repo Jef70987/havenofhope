@@ -7,7 +7,7 @@ export const useShare = () => {
 
     if (navigator.share) {
       try {
-        await navigator.share({ title, text, url })
+        await navigator.share({ title, text })
         return
       } catch {
         return

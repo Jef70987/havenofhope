@@ -6,14 +6,16 @@ export default defineNuxtConfig({
   modules: ['@nuxtjs/supabase'],
   supabase: {
     redirect: false,
+    url: process.env.NUXT_PUBLIC_SUPABASE_URL,
+    key: process.env.NUXT_PUBLIC_SUPABASE_KEY,
   },
   runtimeConfig: {
     public: {
-      supabaseUrl: '',
-      supabaseKey: '',
-      siteUrl: '',
+      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL || '',
+      supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY || '',
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
     },
-    supabaseServiceKey: '',
+    supabaseServiceKey: process.env.NUXT_SUPABASE_SERVICE_KEY || '',
   },
   vite: {
     plugins: [tailwindcss()],

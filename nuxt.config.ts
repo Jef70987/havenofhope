@@ -6,16 +6,21 @@ export default defineNuxtConfig({
   modules: ['@nuxtjs/supabase'],
   supabase: {
     redirect: false,
-    url: process.env.NUXT_PUBLIC_SUPABASE_URL,
-    key: process.env.NUXT_PUBLIC_SUPABASE_KEY,
   },
   runtimeConfig: {
     public: {
-      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL || '',
-      supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY || '',
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || '',
+      // These NUXT_PUBLIC_ variables are the correct ones for the module.
+      // Nuxt's runtimeConfig automatically maps env vars with this prefix.
+      supabaseUrl: '',
+      supabaseKey: '',
+      siteUrl: '',
     },
-    supabaseServiceKey: process.env.NUXT_SUPABASE_SERVICE_KEY || '',
+    supabaseServiceKey: '',
+  },
+  nitro: {
+    // This is the critical fix for the 500 error on Cloudflare.
+    // It prevents the edge runtime from crashing due to minification incompatibilities.
+    minify: false
   },
   vite: {
     plugins: [tailwindcss()],

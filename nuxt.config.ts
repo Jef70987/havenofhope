@@ -7,6 +7,11 @@ export default defineNuxtConfig({
   supabase: {
     redirect: false,
   },
+  runtimeConfig: {
+    supabaseUrl: '',
+    supabaseKey: '',
+    supabaseServiceKey: '',
+  },
   vite: {
     plugins: [tailwindcss()],
   },

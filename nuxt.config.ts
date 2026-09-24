@@ -8,8 +8,11 @@ export default defineNuxtConfig({
     redirect: false,
   },
   runtimeConfig: {
-    supabaseUrl: '',
-    supabaseKey: '',
+    public: {
+      supabaseUrl: '',
+      supabaseKey: '',
+      siteUrl: '',
+    },
     supabaseServiceKey: '',
   },
   vite: {

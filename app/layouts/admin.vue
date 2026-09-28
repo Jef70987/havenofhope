@@ -34,7 +34,7 @@ const logout = async () => {
         </button>
         <div>
           <h1 class="text-sm font-bold">
-            <span class="text-[#cc0000]">Global</span> Mentorship
+            <span class="text-[#cc0000]">FT</span> Kickoffs
           </h1>
           <p class="text-[0.6rem] text-gray-500 uppercase tracking-wider">Author Panel</p>
         </div>
@@ -67,7 +67,7 @@ const logout = async () => {
 
       <div class="px-4 py-4 border-b border-gray-800">
         <h2 class="text-sm font-bold">
-          <span class="text-[#cc0000]">Global</span> Mentorship
+          <span class="text-[#cc0000]">FT</span> Kickoffs
         </h2>
         <p class="text-[0.6rem] text-gray-400 uppercase tracking-wider mt-0.5">Author Panel</p>
       </div>
@@ -90,7 +90,7 @@ const logout = async () => {
     <aside class="hidden md:flex md:flex-col w-56 bg-white border-r border-[#e8e8e8] shrink-0 h-screen overflow-y-auto">
       <div class="px-4 py-4 border-b border-[#e8e8e8]">
         <h1 class="text-sm font-bold">
-          <span class="text-[#cc0000]">Global</span> Mentorship
+          <span class="text-[#cc0000]">FT</span> Kickoffs
         </h1>
         <p class="text-[0.6rem] text-gray-500 uppercase tracking-wider mt-0.5">Author Panel</p>
       </div>
